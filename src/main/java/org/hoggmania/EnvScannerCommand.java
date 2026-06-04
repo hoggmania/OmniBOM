@@ -47,7 +47,7 @@ import java.util.stream.Collectors;
 @Command(
     name = "scan",
     description = "Scan repository for build, IaC, and source files.",
-    subcommands = {SbomCommand.class}
+    subcommands = {SbomCommand.class, DynamicLibraryCommand.class}
 )
 
 public class EnvScannerCommand implements Runnable {
