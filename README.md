@@ -6,10 +6,11 @@ A powerful CLI tool for CI to intelligently analyzing build environments and gen
 
 - **Build Environment Scanning**: Automatically detects Maven, Gradle, npm, Yarn, pnpm, Python (pip/requirements, Pipenv, Poetry, uv), Go, .NET, Rust, PHP, Ruby, Conda, and standalone binaries
 - **Intelligent SBOM Generation**: Runs CycloneDX tooling when available, with Syft-based filesystem/binary scanning as a fallback
+- **Dynamic Library Detection**: Uses an `ldd` + package-manager ownership workflow to identify dynamically linked native libraries and emit package URLs (PURLs) where supported
 - **Command Progress Bars**: Shows a progress bar as each SBOM command starts and completes
 - **File Type Analysis**: Analyzes source code files with percentage breakdowns and rankings
 - **Multi-Module Support**: Aggregates Maven multi-module SBOMs and supports Gradle projects with the CycloneDX plugin
-- **Cross-Platform**: Works on Windows, Linux, and macOS
+- **Cross-Platform Core Scanning**: Works on Windows, Linux, and macOS; native dynamic-library ownership/PURL mapping is Linux-first with Windows caveats documented below
 - **Native Image Support**: Optimized for GraalVM native compilation for instant startup
 - **JSON Export**: Optional JSON output for scan results and SBOM summaries (`--json`)
 
@@ -335,6 +336,38 @@ java -jar target/quarkus-app/quarkus-run.jar sbom --dry-run
 | Standalone Binaries | `*.jar`, `*.exe`, `*.dll`, ... | Syft | `syft scan dir:<path> -o cyclonedx-json=...` |
 
 For detailed information about CycloneDX plugins for each language, see [cyclonedx_plugins_by_language.md](cyclonedx_plugins_by_language.md).
+
+### Dynamic Library Detection
+
+The `dynamic-libs` subcommand implements a FOSSA-style native dependency workflow for compiled binaries:
+
+```bash
+# Print a JSON report for one or more binaries/directories
+java -jar target/quarkus-app/quarkus-run.jar dynamic-libs --json /path/to/binary
+
+# Write the report to a file
+java -jar target/quarkus-app/quarkus-run.jar dynamic-libs --json --output dynamic-libs.json /path/to/bin-dir
+```
+
+How it works:
+
+1. Runs `ldd` against each target binary.
+2. Parses dynamically linked shared libraries.
+3. Maps each library path back to an owning package with `dpkg -S` or `rpm -qf` when those package managers are available.
+4. Emits Package URLs (PURLs) for managed OS-package libraries, for example:
+   - `pkg:deb/libssl3?arch=amd64`
+   - `pkg:rpm/openssl-libs@3.0.7-27.el9?arch=x86_64`
+5. Marks libraries as unmanaged when no package owner can be resolved.
+
+Platform support and caveats:
+
+- **Linux with dpkg**: Supported. Debian/Ubuntu-owned libraries are reported with `packageType: "deb"` and `packageUrl` values.
+- **Linux with rpm**: Supported. RHEL/Fedora/SUSE-owned libraries are reported with `packageType: "rpm"`, parsed package versions, architecture qualifiers, and `packageUrl` values.
+- **Windows with Git Bash/MSYS/Cygwin `ldd`**: Partially supported. DLL links can be detected when `ldd` is available, but Windows package ownership is not resolved through `dpkg`/`rpm`, so findings are usually `managed: false` with `packageUrl: null`.
+- **Native Windows DLL/package ownership**: Not currently implemented. Mapping DLLs to WinGet/MSIX/registry package metadata and generating Windows-specific PURLs would require a Windows resolver such as `dumpbin`, `objdump`, or Dependencies.exe plus package metadata lookups.
+- **macOS**: Not currently supported by this subcommand because it uses `ldd`. A macOS implementation would need an `otool -L`-based resolver.
+
+The `dynamic-libs` report is currently a separate JSON report, not merged into the generated CycloneDX SBOM files.
 
 **SBOM Features:**
 

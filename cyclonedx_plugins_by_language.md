@@ -10,6 +10,9 @@
 - Commands run in the directory containing the build file (not the repo root).
 - Wildcard .NET project detection is supported (e.g., `*.csproj`).
 - Standalone binaries and ecosystems without dedicated CycloneDX tools are scanned with Syft (CycloneDX JSON).
+- Dynamic native-library detection is available separately via `dynamic-libs`; it is Linux-first (`ldd` + `dpkg -S`/`rpm -qf`) and emits PURLs for package-managed libraries when ownership can be resolved.
+- `dynamic-libs` has limited Windows support: Git Bash/MSYS/Cygwin `ldd` can detect DLL links, but native Windows package ownership/PURL generation is not implemented, so Windows DLL findings are generally unmanaged with `packageUrl: null`.
+- `dynamic-libs` does not currently merge its findings into the CycloneDX SBOM output; treat it as a companion JSON report for native runtime dependency evidence.
 - JSON logs and summaries are written when `--json` is set.
 - Missing tools can be installed with `--allow-tool-install`.
 
