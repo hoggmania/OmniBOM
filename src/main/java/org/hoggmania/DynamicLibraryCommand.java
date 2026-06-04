@@ -78,11 +78,12 @@ public class DynamicLibraryCommand implements Runnable {
             for (DynamicLibraryDependency library : binary.libraries()) {
                 if (library.managed()) {
                     System.out.printf(
-                        "  %s -> %s [%s package: %s]%n",
+                        "  %s -> %s [%s package: %s, purl: %s]%n",
                         library.name(),
                         library.path(),
                         library.packageType(),
-                        library.packageName());
+                        library.packageName(),
+                        library.packageUrl());
                 } else {
                     System.out.printf(
                         "  %s -> %s [%s]%n",

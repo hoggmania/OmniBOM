@@ -50,6 +50,7 @@ class DynamicLibraryDetectorTest {
         assertTrue(ssl.managed());
         assertEquals("libssl3", ssl.packageName());
         assertEquals("deb", ssl.packageType());
+        assertEquals("pkg:deb/libssl3?arch=amd64", ssl.packageUrl());
 
         DynamicLibraryDependency loader = binaryReport.libraries().stream()
             .filter(lib -> lib.name().equals("ld-linux-x86-64.so.2"))
@@ -76,6 +77,27 @@ class DynamicLibraryDetectorTest {
         assertEquals(1, runner.callsTo("ldd"));
         assertEquals(0, runner.callsTo("dpkg"));
         assertEquals(0, runner.callsTo("rpm"));
+    }
+
+    @Test
+    void generatesPackageUrlsForRpmOwnedLibraries() throws Exception {
+        Path binary = Files.writeString(tempDir.resolve("app"), "fake binary");
+        FakeCommandRunner runner = new FakeCommandRunner()
+            .when("ldd", List.of(binary.toString()), 0,
+                "libcrypto.so.3 => /usr/lib64/libcrypto.so.3 (0x00007f6e00010000)\n", "")
+            .when("dpkg", List.of("-S", "/usr/lib64/libcrypto.so.3"), 1, "", "no path found")
+            .when("rpm", List.of("-qf", "/usr/lib64/libcrypto.so.3"), 0,
+                "openssl-libs-3.0.7-27.el9.x86_64\n", "");
+
+        DynamicLibraryDetector detector = new DynamicLibraryDetector(runner);
+        DynamicLibraryReport report = detector.analyze(List.of(binary));
+
+        DynamicLibraryDependency dependency = report.binaries().getFirst().libraries().getFirst();
+        assertTrue(dependency.managed());
+        assertEquals("rpm", dependency.packageType());
+        assertEquals("openssl-libs", dependency.packageName());
+        assertEquals("3.0.7-27.el9", dependency.packageVersion());
+        assertEquals("pkg:rpm/openssl-libs@3.0.7-27.el9?arch=x86_64", dependency.packageUrl());
     }
 
     @Test

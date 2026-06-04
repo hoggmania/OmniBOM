@@ -35,6 +35,7 @@ record DynamicLibraryDependency(
     String packageType,
     String packageName,
     String packageVersion,
+    String packageUrl,
     String ownerQuery,
     String status
 ) {

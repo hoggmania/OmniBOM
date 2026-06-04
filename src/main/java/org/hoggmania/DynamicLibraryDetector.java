@@ -6,6 +6,8 @@
 package org.hoggmania;
 
 import java.io.IOException;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
@@ -151,6 +153,7 @@ public class DynamicLibraryDetector {
             null,
             null,
             null,
+            null,
             library.path(),
             "unmanaged dynamically linked dependency");
     }
@@ -163,6 +166,7 @@ public class DynamicLibraryDetector {
             owner.packageType(),
             owner.packageName(),
             owner.packageVersion(),
+            owner.packageUrl(),
             library.path(),
             "managed dynamically linked dependency");
     }
@@ -178,15 +182,24 @@ public class DynamicLibraryDetector {
             return Optional.empty();
         }
         String line = result.stdout().lines().findFirst().orElse("").trim();
-        int colon = line.indexOf(':');
-        if (colon <= 0) {
+        int ownerSeparator = line.indexOf(": ");
+        if (ownerSeparator <= 0) {
             return Optional.empty();
         }
-        String packageName = line.substring(0, colon);
-        if (packageName.contains(":")) {
-            packageName = packageName.substring(0, packageName.indexOf(':'));
+        String ownerIdentifier = line.substring(0, ownerSeparator);
+        String packageName = ownerIdentifier;
+        String architecture = null;
+        int architectureSeparator = ownerIdentifier.indexOf(':');
+        if (architectureSeparator > 0) {
+            packageName = ownerIdentifier.substring(0, architectureSeparator);
+            architecture = ownerIdentifier.substring(architectureSeparator + 1);
         }
-        return Optional.of(new PackageOwner("deb", packageName, null));
+        return Optional.of(new PackageOwner(
+            "deb",
+            packageName,
+            null,
+            architecture,
+            packageUrl("deb", packageName, null, architecture)));
     }
 
     private Optional<PackageOwner> resolveRpmOwner(String libraryPath) throws InterruptedException {
@@ -203,7 +216,56 @@ public class DynamicLibraryDetector {
         if (packageIdentifier.isBlank()) {
             return Optional.empty();
         }
-        return Optional.of(new PackageOwner("rpm", packageIdentifier, null));
+        RpmPackageParts parts = parseRpmPackageIdentifier(packageIdentifier);
+        return Optional.of(new PackageOwner(
+            "rpm",
+            parts.name(),
+            parts.version(),
+            parts.architecture(),
+            packageUrl("rpm", parts.name(), parts.version(), parts.architecture())));
+    }
+
+    private RpmPackageParts parseRpmPackageIdentifier(String packageIdentifier) {
+        String architecture = null;
+        String withoutArchitecture = packageIdentifier;
+        int architectureSeparator = packageIdentifier.lastIndexOf('.');
+        if (architectureSeparator > 0 && architectureSeparator < packageIdentifier.length() - 1) {
+            architecture = packageIdentifier.substring(architectureSeparator + 1);
+            withoutArchitecture = packageIdentifier.substring(0, architectureSeparator);
+        }
+
+        int releaseSeparator = withoutArchitecture.lastIndexOf('-');
+        if (releaseSeparator <= 0) {
+            return new RpmPackageParts(packageIdentifier, null, architecture);
+        }
+        String release = withoutArchitecture.substring(releaseSeparator + 1);
+        String beforeRelease = withoutArchitecture.substring(0, releaseSeparator);
+
+        int versionSeparator = beforeRelease.lastIndexOf('-');
+        if (versionSeparator <= 0) {
+            return new RpmPackageParts(packageIdentifier, null, architecture);
+        }
+        String name = beforeRelease.substring(0, versionSeparator);
+        String version = beforeRelease.substring(versionSeparator + 1) + "-" + release;
+        return new RpmPackageParts(name, version, architecture);
+    }
+
+    private static String packageUrl(String packageType, String packageName, String packageVersion, String architecture) {
+        StringBuilder purl = new StringBuilder("pkg:")
+            .append(packageType)
+            .append('/')
+            .append(purlEncode(packageName));
+        if (packageVersion != null && !packageVersion.isBlank()) {
+            purl.append('@').append(purlEncode(packageVersion));
+        }
+        if (architecture != null && !architecture.isBlank()) {
+            purl.append("?arch=").append(purlEncode(architecture));
+        }
+        return purl.toString();
+    }
+
+    private static String purlEncode(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 
     private static String firstNonBlank(String first, String second) {
@@ -219,6 +281,15 @@ public class DynamicLibraryDetector {
     private record LinkedLibrary(String name, String path) {
     }
 
-    private record PackageOwner(String packageType, String packageName, String packageVersion) {
+    private record PackageOwner(
+        String packageType,
+        String packageName,
+        String packageVersion,
+        String architecture,
+        String packageUrl
+    ) {
+    }
+
+    private record RpmPackageParts(String name, String version, String architecture) {
     }
 }
